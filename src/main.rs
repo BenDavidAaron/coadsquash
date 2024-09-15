@@ -1,19 +1,37 @@
 use git2::{Repository, Status};
+
+use std::env;
 use std::error::Error;
+use std::fs::File;
 use std::io::{self, Write};
 use std::path::Path;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let repo_path = ".";
-    let repo = Repository::open(repo_path)?;
-    let stdout = io::stdout();
-    let mut stdout = stdout.lock();
+    let args: Vec<String> = env::args().collect();
+    let (repo_path, output_path) = parse_args(&args)?;
+
+    let repo = Repository::open(&repo_path)?;
+    let mut output: Box<dyn Write> = if let Some(path) = output_path {
+        Box::new(File::create(path)?)
+    } else {
+        Box::new(io::stdout())
+    };
+
     traverse_repo(
         &repo,
         repo.workdir().ok_or("Invalid repository")?,
-        &mut stdout,
+        &mut output,
     )?;
     Ok(())
+}
+
+fn parse_args(args: &[String]) -> Result<(String, Option<String>), Box<dyn Error>> {
+    match args.len() {
+        1 => Ok((".".to_string(), None)),
+        2 => Ok((args[1].clone(), None)),
+        3 => Ok((args[1].clone(), Some(args[2].clone()))),
+        _ => Err("Usage: git-file-concatenator [repo_path] [output_file]".into()),
+    }
 }
 
 fn traverse_repo(
@@ -55,7 +73,7 @@ fn process_file(
 
     if status.is_empty() || status.contains(Status::WT_MODIFIED) || status.contains(Status::WT_NEW)
     {
-        eprintln!("Processing File {:?}", repo_path);
+        writeln!(output, "// Processing File {:?}", repo_path)?;
         let content = std::fs::read_to_string(path)?;
         writeln!(output, "// File: {:?}", repo_path)?;
         writeln!(output, "{}\n", content)?;
