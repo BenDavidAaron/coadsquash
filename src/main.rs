@@ -2,9 +2,11 @@ use git2::{Repository, Status};
 
 use std::env;
 use std::error::Error;
-use std::fs::File;
 use std::io::{self, Write};
 use std::path::Path;
+use std::fs;
+use crate::fs::File;
+
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = env::args().collect();
@@ -71,12 +73,16 @@ fn process_file(
         .status_file(repo_path)
         .map_err(|e| format!("Failed to get file status: {}", e))?;
 
-    if status.is_empty() || status.contains(Status::WT_MODIFIED) || status.contains(Status::WT_NEW)
-    {
-        writeln!(output, "// Processing File {:?}", repo_path)?;
-        let content = std::fs::read_to_string(path)?;
-        writeln!(output, "// File: {:?}", repo_path)?;
-        writeln!(output, "{}\n", content)?;
+    if status.is_empty() || status.contains(Status::WT_MODIFIED) || status.contains(Status::WT_NEW) {
+        let content = fs::read(path)?; // Read as raw bytes
+
+        // Check if the file contains only ASCII characters
+        if content.iter().all(|&b| b.is_ascii()) {
+            writeln!(output, "// Processing File {:?}", repo_path)?;
+            writeln!(output, "// File: {:?}", repo_path)?;
+            output.write_all(&content)?;
+            writeln!(output, "\n")?;
+        }
     }
     Ok(())
 }
